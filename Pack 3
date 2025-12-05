@@ -1,0 +1,117 @@
+<script>
+// ------------------- AUDIO -------------------
+const sounds = {
+    footsteps: new Audio('https://freesound.org/data/previews/256/256113_3263906-lq.mp3'),
+    jumpScare: new Audio('https://freesound.org/data/previews/341/341695_624157-lq.mp3'),
+    ambient: new Audio('https://freesound.org/data/previews/519/519149_8046012-lq.mp3')
+};
+sounds.ambient.loop = true;
+sounds.ambient.volume = 0.3;
+sounds.ambient.play();
+
+// ------------------- FLASHLIGHT CONE & SHADOWS -------------------
+function drawFlashlight(player){
+    // Dark overlay
+    ctx.fillStyle = 'rgba(0,0,0,0.95)';
+    ctx.fillRect(camera.x, camera.y, canvas.width, canvas.height);
+    
+    // Light cone
+    const gradient = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, 200);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.9)');
+    gradient.addColorStop(1, 'rgba(0,0,0,0)');
+    
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 200, 0, Math.PI*2);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+}
+
+// ------------------- ENVIRONMENTAL OBJECTS -------------------
+class EnvObject{
+    constructor(x,y,w,h,type){
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.type = type; // 'door','furniture','light'
+        this.active = true;
+        this.flickerTimer = 0;
+    }
+    
+    draw(){
+        if(!this.active) return;
+        ctx.fillStyle = (this.type==='door')?'#663300':(this.type==='furniture')?'#555':'#ffff00';
+        ctx.fillRect(this.x,this.y,this.w,this.h);
+        // Flickering lights
+        if(this.type==='light'){
+            this.flickerTimer++;
+            if(this.flickerTimer%30<15) ctx.fillStyle='#ff0';
+            else ctx.fillStyle='#440';
+            ctx.fillRect(this.x,this.y,this.w,this.h);
+        }
+    }
+    
+    checkJumpScare(players){
+        for(let p of players){
+            let dx = this.x + this.w/2 - p.x;
+            let dy = this.y + this.h/2 - p.y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            if(dist<50 && this.type==='door' && Math.random()<0.02){
+                triggerJumpScare(p);
+            }
+        }
+    }
+}
+
+function triggerJumpScare(player){
+    // Flash screen
+    ctx.fillStyle='rgba(255,0,0,0.8)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    // Play sound
+    sounds.jumpScare.currentTime = 0;
+    sounds.jumpScare.play();
+    // Reduce player health
+    player.health -= 5;
+}
+
+// ------------------- INIT ENV OBJECTS -------------------
+let envObjects = [
+    new EnvObject(300,300,50,80,'furniture'),
+    new EnvObject(600,150,30,80,'door'),
+    new EnvObject(950,180,60,60,'light'),
+    new EnvObject(1200,500,40,100,'door'),
+    new EnvObject(1500,700,50,50,'furniture')
+];
+
+// ------------------- INTEGRATE WITH GAME LOOP -------------------
+const oldGameLoop2 = gameLoop;
+gameLoop = function(){
+    ctx.fillStyle='rgba(0,0,0,1)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    centerCamera();
+    ctx.save();
+    ctx.translate(-camera.x,-camera.y);
+    // Draw walls
+    ctx.fillStyle='rgba(200,200,200,0.3)';
+    for(let w of map.walls){ ctx.fillRect(w.x,w.y,w.w,w.h); }
+    // Draw env objects
+    for(let obj of envObjects){ 
+        obj.draw();
+        obj.checkJumpScare(gameMode==='2P'?[player1,player2]:[player1]);
+    }
+    // Players
+    player1.move(); player1.draw();
+    if(gameMode==='2P'){player2.move(); player2.draw();}
+    // Enemies
+    enemyLoop();
+    // Flashlight cones
+    drawFlashlight(player1);
+    if(gameMode==='2P') drawFlashlight(player2);
+    ctx.restore();
+    // HUD
+    hud.textContent = `P1 Health: ${player1.health} | P2 Health: ${player2.health} | Batteries: ${player1.battery}%`;
+    requestAnimationFrame(gameLoop);
+}
+</script>
