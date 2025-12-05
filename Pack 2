@@ -1,0 +1,151 @@
+<script>
+// ------------------- ENEMY CLASSES -------------------
+class Enemy {
+    constructor(x,y,type){
+        this.x = x;
+        this.y = y;
+        this.radius = 15;
+        this.type = type; // 'stalker', 'doll', 'ghost'
+        this.speed = (type==='stalker')?1.5:(type==='doll')?2:1;
+        this.target = null;
+        this.active = true;
+        this.flashlightSensitive = (type==='ghost'); // Ghost reacts to light
+        this.particles = [];
+    }
+    
+    setTarget(players){
+        if(this.type==='doll'){ this.target = players[Math.floor(Math.random()*players.length)]; return;}
+        // Stalker targets nearest player
+        let nearest = players[0];
+        let minDist = distance(this.x,this.y,players[0].x,players[0].y);
+        for(let p of players){
+            let d = distance(this.x,this.y,p.x,p.y);
+            if(d<minDist){ minDist = d; nearest=p; }
+        }
+        this.target = nearest;
+    }
+    
+    move(){
+        if(!this.active) return;
+        if(this.target){
+            let dx = this.target.x - this.x;
+            let dy = this.target.y - this.y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            if(dist>0){
+                this.x += (dx/dist)*this.speed;
+                this.y += (dy/dist)*this.speed;
+            }
+        }
+        // Doll random teleportation every few seconds
+        if(this.type==='doll' && Math.random()<0.002){
+            this.x = Math.random()*(map.width-100)+50;
+            this.y = Math.random()*(map.height-100)+50;
+        }
+        // Collision with walls
+        for(let w of map.walls){
+            if(this.x+this.radius>w.x && this.x-this.radius<w.x+w.w &&
+               this.y+this.radius>w.y && this.y-this.radius<w.y+w.h){
+                this.x -= (this.x-this.target.x)*0.1;
+                this.y -= (this.y-this.target.y)*0.1;
+            }
+        }
+        // Update particles
+        this.particles.push({x:this.x,y:this.y,r:Math.random()*3+1,life:30});
+        this.particles = this.particles.filter(p=>p.life>0);
+        for(let p of this.particles) p.life--;
+    }
+    
+    draw(){
+        if(!this.active) return;
+        // Enemy body
+        ctx.beginPath();
+        ctx.arc(this.x,this.y,this.radius,0,Math.PI*2);
+        ctx.fillStyle = (this.type==='stalker')?'#ff00ff':(this.type==='doll')?'#ffffff':'#00ffff';
+        ctx.shadowColor=ctx.fillStyle;
+        ctx.shadowBlur=10;
+        ctx.fill();
+        ctx.shadowBlur=0;
+        // Particle effect
+        for(let p of this.particles){
+            ctx.beginPath();
+            ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+            ctx.fillStyle='rgba(255,255,255,0.3)';
+            ctx.fill();
+        }
+    }
+    
+    checkCollision(player){
+        let dx = this.x - player.x;
+        let dy = this.y - player.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+        if(dist<this.radius+player.radius){
+            // Trigger jump scare
+            console.log(`${this.type.toUpperCase()} ATTACKED ${player.color}`);
+            player.health -= 1; // simple health reduction
+            this.spawnParticles();
+        }
+    }
+    
+    spawnParticles(){
+        for(let i=0;i<20;i++){
+            this.particles.push({
+                x:this.x,
+                y:this.y,
+                r:Math.random()*3+1,
+                life:50,
+                dx:(Math.random()-0.5)*3,
+                dy:(Math.random()-0.5)*3
+            });
+        }
+    }
+}
+
+// ------------------- UTILITY -------------------
+function distance(x1,y1,x2,y2){ return Math.sqrt((x1-x2)**2 + (y1-y2)**2); }
+
+// ------------------- INIT ENEMIES -------------------
+let enemies = [];
+function spawnEnemies(){
+    enemies.push(new Enemy(400,150,'stalker'));
+    enemies.push(new Enemy(800,400,'stalker'));
+    enemies.push(new Enemy(700,250,'doll'));
+    enemies.push(new Enemy(1200,700,'ghost'));
+}
+
+// ------------------- ENEMY LOOP -------------------
+function enemyLoop(){
+    let players = [player1];
+    if(gameMode==='2P') players.push(player2);
+    for(let e of enemies){
+        e.setTarget(players);
+        e.move();
+        for(let p of players) e.checkCollision(p);
+        e.draw();
+    }
+}
+
+// ------------------- INTEGRATE WITH GAME LOOP -------------------
+const oldGameLoop = gameLoop;
+gameLoop = function(){
+    ctx.fillStyle='rgba(0,0,0,1)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    centerCamera();
+    ctx.save();
+    ctx.translate(-camera.x,-camera.y);
+    // Draw walls
+    ctx.fillStyle='rgba(200,200,200,0.3)';
+    for(let w of map.walls){ ctx.fillRect(w.x,w.y,w.w,w.h); }
+    // Players
+    player1.move(); player1.draw();
+    if(gameMode==='2P'){player2.move(); player2.draw();}
+    // Enemies
+    enemyLoop();
+    ctx.restore();
+    // Update HUD
+    hud.textContent = `P1 Health: ${player1.health} | P2 Health: ${player2.health} | Batteries: ${player1.battery}%`;
+    requestAnimationFrame(gameLoop);
+}
+
+// ------------------- START GAME -------------------
+spawnEnemies();
+</script>
